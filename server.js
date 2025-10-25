@@ -273,6 +273,110 @@ app.post("/run-add-to-cart-test", async (req, res) => {
 });
 
 
+// ✅ Canada Hair single product scraper (test)
+app.post("/scrape-canadahair-test", async (req, res) => {
+  const productUrl =
+    req.body.url ||
+    "https://canadahair.ca/4t12-613-clip-in-hair-extensions-remy-hair.html?ci=21&qi=synth&li=16inches&ti=thick&hi=white&wi=no";
+
+  const { chromium } = require("playwright");
+  const results = [];
+
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+
+  const page = await (await browser.newContext()).newPage();
+
+  try {
+    console.log(`🔎 Visiting ${productUrl}`);
+    await page.goto(productUrl, { waitUntil: "networkidle", timeout: 60000 });
+
+    // --- Product Name ---
+    const fullName = await page.textContent("h1.page-title span.base");
+    const match = fullName.match(/·\s*(.*?)\s*-/);
+    const productName = match ? match[1].trim() : fullName.trim();
+
+    // --- Custom Attributes ---
+    const material = await page.textContent("#price-of p:has-text('Material') + span, #price-of span:nth-of-type(1)").catch(()=>null);
+    const size = await page.textContent("#price-of p:has-text('Size') + span, #price-of span:nth-of-type(2)").catch(()=>null);
+    const weight = await page.textContent("#price-of p:has-text('Weight') + span, #price-of span:nth-of-type(3)").catch(()=>null);
+
+    // --- Prices ---
+    const priceTag = await page.$("#price");
+    const salePrice = await priceTag.getAttribute("price");
+    const regularPrice = await priceTag.getAttribute("oldprice");
+    const couponPrice = await priceTag.getAttribute("cprice");
+
+    // --- Quality Options ---
+    const qualityOptions = await page.$$eval("#quality .actionProduct", els =>
+      els.map(el => {
+        const spans = el.querySelectorAll("span");
+        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
+      })
+    );
+
+    // --- Length Options ---
+    const lengthOptions = await page.$$eval("#length .actionProduct", els =>
+      els.map(el => {
+        const spans = el.querySelectorAll("span");
+        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
+      })
+    );
+
+    // --- Thickness Options ---
+    const thicknessOptions = await page.$$eval("#thickness .actionProduct", els =>
+      els.map(el => {
+        const spans = el.querySelectorAll("span");
+        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
+      })
+    );
+
+    // --- Hair Style ---
+    const hairStyles = await page.$$eval("#wavy .actionProduct", els =>
+      els.map(el => el.innerText.trim().replace(/\s+/g, " "))
+    );
+
+    // --- Shades + Colors (simplified for test) ---
+    const shades = await page.$$eval("#shades > div", els =>
+      els.map(el => el.textContent.replace(/\s+/g, " ").trim().split("(")[0].trim())
+    );
+    const colors = await page.$$eval("#color .actionProduct", els =>
+      els.map(el => ({
+        colorName: el.getAttribute("data-name"),
+        colorCode: el.getAttribute("color-code"),
+        image: el.querySelector("img")?.src,
+      }))
+    );
+
+    results.push({
+      productUrl,
+      productName,
+      material,
+      size,
+      weight,
+      regularPrice,
+      salePrice,
+      couponPrice,
+      shades,
+      colors,
+      qualityOptions,
+      lengthOptions,
+      thicknessOptions,
+      hairStyles,
+    });
+
+    await browser.close();
+    res.json({ success: true, results });
+  } catch (err) {
+    console.error("❌ Scrape failed:", err);
+    await browser.close();
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 
 
 // ✅ Generic site audit route (optional for any site)
