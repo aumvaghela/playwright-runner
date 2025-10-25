@@ -277,7 +277,7 @@ app.post("/run-add-to-cart-test", async (req, res) => {
 app.post("/scrape-canadahair-test", async (req, res) => {
   const productUrl =
     req.body.url ||
-    "https://canadahair.ca/4t12-613-clip-in-hair-extensions-remy-hair.html?ci=21&qi=synth&li=16inches&ti=thick&hi=white&wi=no";
+    "https://canadahair.ca/platinum-blonde-fusion-hair-extensions-pre-bonded-keratin-human-hair.html?ci=21&qi=hh&li=14inches&ti=thick&hi=white&wi=no";
 
   const { chromium } = require("playwright");
   const results = [];
@@ -294,7 +294,7 @@ app.post("/scrape-canadahair-test", async (req, res) => {
     await page.goto(productUrl, { waitUntil: "networkidle", timeout: 60000 });
 
     // --- Product Name ---
-    await page.waitForSelector("h1.page-title span.base, h1.product-title, h1.page-title", { timeout: 600000 });
+    await page.waitForSelector("h1.page-title span.base, h1.product-title, h1.page-title", { timeout: 60000 });
 const fullName = await page.textContent("h1.page-title span.base, h1.product-title, h1.page-title");
     const match = fullName.match(/·\s*(.*?)\s*-/);
     const productName = match ? match[1].trim() : fullName.trim();
