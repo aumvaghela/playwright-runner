@@ -103,7 +103,7 @@ app.post("/run-brainbean-test", async (req, res) => {
 
 
 
-// ✅ Canada Hair single product scraper (with debug & bot evasion)
+// ✅ Canada Hair single product scraper (improved with debug & JS wait)
 app.post("/scrape-canadahair-test", async (req, res) => {
   const productUrl =
     req.body.url ||
@@ -135,58 +135,71 @@ app.post("/scrape-canadahair-test", async (req, res) => {
   try {
     console.log(`🔎 Visiting ${productUrl}`);
     const response = await page.goto(productUrl, {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
       timeout: 90000,
     });
 
     console.log("✅ Page loaded. Status:", response.status());
     console.log("Final URL:", page.url());
 
-    // Wait small delay for AJAX content
+    // ✅ Wait for Magento JS-rendered content (up to 25s)
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll(
+          "h1, #color, #shades, #quality, #length"
+        ).length > 0,
+      { timeout: 25000 }
+    );
     await page.waitForTimeout(5000);
 
-    // Check for bot-block messages
+    // ✅ Check for bot-protection text
     const bodyText = await page.textContent("body");
     if (/Access denied|Cloudflare|Checking your browser|blocked/i.test(bodyText)) {
       throw new Error("⚠️ Site returned bot-protection or redirect content");
     }
 
-    // Save HTML + screenshot for debug
+    // ✅ Save debug HTML + screenshot for verification
     const htmlSnapshot = await page.content();
     fs.writeFileSync("canadahair-debug.html", htmlSnapshot);
     await page.screenshot({ path: "canadahair-debug.png", fullPage: true });
-    console.log("🧾 Debug snapshot saved");
 
-    // --- Try to extract product name ---
+    // ✅ Log small HTML preview in Render logs
+    const first500 = htmlSnapshot.substring(0, 500);
+    console.log("🧩 HTML Preview:", first500.replace(/\n/g, " "));
+
+    // --- 🏷️ Product Title Extraction ---
     let productName = "Unknown";
     try {
       await page.waitForSelector(
-        "h1.page-title span.base, h1.product-title, h1.page-title",
-        { timeout: 30000 }
+        "h1, .page-title, [data-ui-id='page-title-wrapper']",
+        { timeout: 60000 }
       );
       const fullName = await page.textContent(
-        "h1.page-title span.base, h1.product-title, h1.page-title"
+        "h1, .page-title, [data-ui-id='page-title-wrapper']"
       );
       const match = fullName.match(/·\s*(.*?)\s*-/);
       productName = match ? match[1].trim() : fullName.trim();
+      console.log("🧾 Product Name:", productName);
     } catch {
-      console.warn("⚠️ Could not find product title element");
+      console.warn("⚠️ Could not find product title element even after 60s");
     }
 
-    // --- Extract attributes ---
+    // --- ⚙️ Safe text helper ---
     const safeText = async (selector) => {
       try {
-        return (await page.textContent(selector)).trim();
+        const el = await page.textContent(selector);
+        return el.trim();
       } catch {
         return null;
       }
     };
 
+    // --- 🧬 Attributes ---
     const material = await safeText("#price-of span:nth-of-type(1)");
     const size = await safeText("#price-of span:nth-of-type(2)");
     const weight = await safeText("#price-of span:nth-of-type(3)");
 
-    // --- Prices ---
+    // --- 💲 Prices ---
     let regularPrice = null,
       salePrice = null,
       couponPrice = null;
@@ -201,7 +214,7 @@ app.post("/scrape-canadahair-test", async (req, res) => {
       console.warn("⚠️ Failed to extract price data");
     }
 
-    // --- Shades ---
+    // --- 🎨 Shades ---
     const shades = await page.$$eval("#shades > div", (els) =>
       els
         .map((el) =>
@@ -214,7 +227,7 @@ app.post("/scrape-canadahair-test", async (req, res) => {
         .filter(Boolean)
     );
 
-    // --- Colors ---
+    // --- 🖌️ Colors ---
     const colors = await page.$$eval("#color .actionProduct", (els) =>
       els.map((el) => ({
         colorName: el.getAttribute("data-name"),
@@ -223,7 +236,7 @@ app.post("/scrape-canadahair-test", async (req, res) => {
       }))
     );
 
-    // --- Qualities ---
+    // --- 💎 Qualities ---
     const qualityOptions = await page.$$eval("#quality .actionProduct", (els) =>
       els.map((el) => {
         const spans = el.querySelectorAll("span");
@@ -231,7 +244,7 @@ app.post("/scrape-canadahair-test", async (req, res) => {
       })
     );
 
-    // --- Lengths ---
+    // --- 📏 Lengths ---
     const lengthOptions = await page.$$eval("#length .actionProduct", (els) =>
       els.map((el) => {
         const spans = el.querySelectorAll("span");
@@ -239,7 +252,7 @@ app.post("/scrape-canadahair-test", async (req, res) => {
       })
     );
 
-    // --- Thickness ---
+    // --- ⚖️ Thickness ---
     const thicknessOptions = await page.$$eval("#thickness .actionProduct", (els) =>
       els.map((el) => {
         const spans = el.querySelectorAll("span");
@@ -247,11 +260,12 @@ app.post("/scrape-canadahair-test", async (req, res) => {
       })
     );
 
-    // --- Hair Styles ---
+    // --- 💇 Hair Styles ---
     const hairStyles = await page.$$eval("#wavy .actionProduct", (els) =>
       els.map((el) => el.innerText.trim().replace(/\s+/g, " "))
     );
 
+    // --- ✅ Push results ---
     results.push({
       productUrl,
       productName,
@@ -279,6 +293,7 @@ app.post("/scrape-canadahair-test", async (req, res) => {
       .json({ success: false, error: err.message || "Scrape failed" });
   }
 });
+
 
 
 
