@@ -294,7 +294,8 @@ app.post("/scrape-canadahair-test", async (req, res) => {
     await page.goto(productUrl, { waitUntil: "networkidle", timeout: 60000 });
 
     // --- Product Name ---
-    const fullName = await page.textContent("h1.page-title span.base");
+    await page.waitForSelector("h1.page-title span.base, h1.product-title, h1.page-title", { timeout: 600000 });
+const fullName = await page.textContent("h1.page-title span.base, h1.product-title, h1.page-title");
     const match = fullName.match(/·\s*(.*?)\s*-/);
     const productName = match ? match[1].trim() : fullName.trim();
 
