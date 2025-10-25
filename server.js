@@ -101,254 +101,155 @@ app.post("/run-brainbean-test", async (req, res) => {
 });
 
 
-// ✅ WooCommerce Login → Add-to-Cart → Checkout → Place Order Flow
-app.post("/run-add-to-cart-test", async (req, res) => {
-  const baseUrl = "https://playwright.dev.brainbean.us";
-  const results = [];
-
-  try {
-    const browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    // Step 1: Homepage
-    const start1 = Date.now();
-    await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-    results.push({ step: "Homepage", success: true, loadTime: Date.now() - start1 });
-    console.log("✅ Home loaded");
-
-    // Step 2: Login Page
-    console.log("🔐 Navigating to My Account page...");
-    const startLogin = Date.now();
-    await page.goto(`${baseUrl}/my-account/`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("form.woocommerce-form-login", { timeout: 10000 });
-
-    // Step 3: Fill login form
-    console.log("🧾 Filling login credentials...");
-    await page.fill("#username", "playwright");
-    await page.fill("#password", "&HhmXDaq*$r9rNWSPYa$SQGk");
-    await page.click('button[name="login"]');
-
-    // Step 4: Confirm login success (via body.logged-in)
-    let loginSuccess = false;
-    try {
-      await page.waitForFunction(
-        () => document.body.classList.contains("logged-in"),
-        { timeout: 15000 }
-      );
-      loginSuccess = true;
-      console.log("✅ Successfully logged in — 'logged-in' class detected.");
-    } catch {
-      console.warn("⚠️ Login check failed — user not logged in.");
-    }
-
-    if (!loginSuccess) throw new Error("Login failed — stopping flow.");
-
-    results.push({ step: "Login", success: loginSuccess, loadTime: Date.now() - startLogin });
-
-    // Step 5: Shop Page
-    const start2 = Date.now();
-    console.log("🛍️ Opening Shop page...");
-    await page.goto(`${baseUrl}/shop/`, { waitUntil: "domcontentloaded" });
-    results.push({ step: "Shop Page", success: true, loadTime: Date.now() - start2 });
-    console.log("✅ Shop page loaded");
-
-    // Step 6: Click first product
-    const productSelector = "ul.products li.product a.woocommerce-LoopProduct-link";
-    await page.waitForSelector(productSelector, { timeout: 10000 });
-    const firstProductHref = await page.getAttribute(productSelector, "href");
-    console.log(`🛒 Opening product: ${firstProductHref}`);
-    const start3 = Date.now();
-    await page.click(productSelector);
-    await page.waitForLoadState("domcontentloaded");
-    results.push({ step: "Product Page", success: true, url: firstProductHref, loadTime: Date.now() - start3 });
-
-    // Step 7: Add to Cart
-    const addToCartBtn = 'button.single_add_to_cart_button';
-    await page.waitForSelector(addToCartBtn, { timeout: 10000 });
-    console.log("🛍️ Adding product to cart...");
-    await page.click(addToCartBtn);
-    await page.waitForTimeout(3000);
-
-    // Step 8: Wait for side cart
-    const sideCartSelector = "#moderncart-slide-out";
-    let sideCartVisible = false;
-    try {
-      await page.waitForSelector(sideCartSelector, { timeout: 8000 });
-      sideCartVisible = true;
-      console.log("✅ Side cart opened");
-    } catch {
-      console.warn("⚠️ Side cart did not open automatically");
-    }
-    results.push({ step: "Side Cart", success: sideCartVisible });
-
-    // Step 9: Close side cart
-    if (sideCartVisible) {
-      const closeButton = ".moderncart-slide-out-header-close";
-      try {
-        await page.click(closeButton, { timeout: 4000 });
-        console.log("🧩 Closed side cart");
-      } catch {
-        console.warn("⚠️ Could not close side cart");
-      }
-    }
-
-    // Step 10: Go to Cart page
-    const start6 = Date.now();
-    console.log("➡️ Navigating to Cart page...");
-    await page.goto(`${baseUrl}/cart/`, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForSelector(".wc-proceed-to-checkout a.checkout-button", { timeout: 15000 });
-    results.push({ step: "Cart Page", success: true, loadTime: Date.now() - start6 });
-    console.log("✅ Cart page loaded");
-
-    // Step 11: Proceed to Checkout
-    const checkoutBtn = ".wc-proceed-to-checkout a.checkout-button";
-    const start7 = Date.now();
-    console.log("💳 Proceeding to Checkout...");
-    await page.click(checkoutBtn);
-    await page.waitForURL(/\/checkout/, { timeout: 15000 });
-    await page.waitForSelector("form.checkout", { timeout: 15000 });
-    results.push({ step: "Checkout Page", success: true, loadTime: Date.now() - start7 });
-    console.log("✅ Checkout loaded");
-
-    // Step 12: Fill checkout form
-    console.log("🧾 Filling billing details...");
-    await page.fill("#billing_first_name", "Playwright");
-    await page.fill("#billing_last_name", "Tester");
-    await page.fill("#billing_company", "Brainbean Technolabs");
-    await page.selectOption("#billing_country", "US");
-    await page.fill("#billing_address_1", "123 Automation Street");
-    await page.fill("#billing_city", "New York");
-    await page.selectOption("#billing_state", "NY");
-    await page.fill("#billing_postcode", "10001");
-    await page.fill("#billing_phone", "9999999999");
-    await page.fill("#billing_email", "playwright@brainbean.in");
-    results.push({ step: "Filled Checkout Form", success: true });
-    console.log("✅ Billing form filled");
-
-    // Step 13: Place Order
-    console.log("🧾 Placing the order...");
-    const start10 = Date.now();
-    await page.click("#place_order");
-    await page.waitForLoadState("networkidle", { timeout: 30000 });
-
-    // Step 14: Wait for Thank You Page
-    let orderSuccess = false;
-    try {
-      await page.waitForSelector(".woocommerce-order-received", { timeout: 25000 });
-      orderSuccess = true;
-      console.log("🎉 Order successfully placed — Thank You page reached!");
-    } catch (err) {
-      console.warn("⚠️ Thank You page not detected:", err.message);
-    }
-
-    results.push({
-      step: "Order Confirmation",
-      success: orderSuccess,
-      loadTime: Date.now() - start10
-    });
-
-    // Step 15: Screenshot for record
-    const screenshot = await page.screenshot({ encoding: "base64", fullPage: true });
-
-    await browser.close();
-
-    res.json({
-      success: orderSuccess,
-      site: baseUrl,
-      flow: "Login → Add to Cart → Checkout → Place Order",
-      timestamp: new Date().toISOString(),
-      results,
-      screenshot: `data:image/png;base64,${screenshot}`
-    });
-
-  } catch (err) {
-    console.error("❌ Flow failed:", err);
-    results.push({ step: "Error", success: false, error: err.message });
-    res.status(500).json({ success: false, results });
-  }
-});
 
 
-// ✅ Canada Hair single product scraper (test)
+// ✅ Canada Hair single product scraper (with debug & bot evasion)
 app.post("/scrape-canadahair-test", async (req, res) => {
   const productUrl =
     req.body.url ||
-    "https://canadahair.ca/platinum-blonde-fusion-hair-extensions-pre-bonded-keratin-human-hair.html?ci=21&qi=hh&li=14inches&ti=thick&hi=white&wi=no";
+    "https://canadahair.ca/4t12-613-clip-in-hair-extensions-remy-hair.html?ci=21&qi=synth&li=16inches&ti=thick&hi=white&wi=no";
 
   const { chromium } = require("playwright");
+  const fs = require("fs");
+
   const results = [];
 
   const browser = await chromium.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled",
+    ],
   });
 
-  const page = await (await browser.newContext()).newPage();
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    viewport: { width: 1366, height: 768 },
+    locale: "en-US",
+  });
+
+  const page = await context.newPage();
 
   try {
     console.log(`🔎 Visiting ${productUrl}`);
-    await page.goto(productUrl, { waitUntil: "networkidle", timeout: 60000 });
+    const response = await page.goto(productUrl, {
+      waitUntil: "networkidle",
+      timeout: 90000,
+    });
 
-    // --- Product Name ---
-    await page.waitForSelector("h1.page-title span.base, h1.product-title, h1.page-title", { timeout: 60000 });
-const fullName = await page.textContent("h1.page-title span.base, h1.product-title, h1.page-title");
-    const match = fullName.match(/·\s*(.*?)\s*-/);
-    const productName = match ? match[1].trim() : fullName.trim();
+    console.log("✅ Page loaded. Status:", response.status());
+    console.log("Final URL:", page.url());
 
-    // --- Custom Attributes ---
-    const material = await page.textContent("#price-of p:has-text('Material') + span, #price-of span:nth-of-type(1)").catch(()=>null);
-    const size = await page.textContent("#price-of p:has-text('Size') + span, #price-of span:nth-of-type(2)").catch(()=>null);
-    const weight = await page.textContent("#price-of p:has-text('Weight') + span, #price-of span:nth-of-type(3)").catch(()=>null);
+    // Wait small delay for AJAX content
+    await page.waitForTimeout(5000);
+
+    // Check for bot-block messages
+    const bodyText = await page.textContent("body");
+    if (/Access denied|Cloudflare|Checking your browser|blocked/i.test(bodyText)) {
+      throw new Error("⚠️ Site returned bot-protection or redirect content");
+    }
+
+    // Save HTML + screenshot for debug
+    const htmlSnapshot = await page.content();
+    fs.writeFileSync("canadahair-debug.html", htmlSnapshot);
+    await page.screenshot({ path: "canadahair-debug.png", fullPage: true });
+    console.log("🧾 Debug snapshot saved");
+
+    // --- Try to extract product name ---
+    let productName = "Unknown";
+    try {
+      await page.waitForSelector(
+        "h1.page-title span.base, h1.product-title, h1.page-title",
+        { timeout: 30000 }
+      );
+      const fullName = await page.textContent(
+        "h1.page-title span.base, h1.product-title, h1.page-title"
+      );
+      const match = fullName.match(/·\s*(.*?)\s*-/);
+      productName = match ? match[1].trim() : fullName.trim();
+    } catch {
+      console.warn("⚠️ Could not find product title element");
+    }
+
+    // --- Extract attributes ---
+    const safeText = async (selector) => {
+      try {
+        return (await page.textContent(selector)).trim();
+      } catch {
+        return null;
+      }
+    };
+
+    const material = await safeText("#price-of span:nth-of-type(1)");
+    const size = await safeText("#price-of span:nth-of-type(2)");
+    const weight = await safeText("#price-of span:nth-of-type(3)");
 
     // --- Prices ---
-    const priceTag = await page.$("#price");
-    const salePrice = await priceTag.getAttribute("price");
-    const regularPrice = await priceTag.getAttribute("oldprice");
-    const couponPrice = await priceTag.getAttribute("cprice");
+    let regularPrice = null,
+      salePrice = null,
+      couponPrice = null;
+    try {
+      const priceTag = await page.$("#price");
+      if (priceTag) {
+        salePrice = await priceTag.getAttribute("price");
+        regularPrice = await priceTag.getAttribute("oldprice");
+        couponPrice = await priceTag.getAttribute("cprice");
+      }
+    } catch {
+      console.warn("⚠️ Failed to extract price data");
+    }
 
-    // --- Quality Options ---
-    const qualityOptions = await page.$$eval("#quality .actionProduct", els =>
-      els.map(el => {
-        const spans = el.querySelectorAll("span");
-        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
-      })
+    // --- Shades ---
+    const shades = await page.$$eval("#shades > div", (els) =>
+      els
+        .map((el) =>
+          el.textContent
+            .replace(/\s+/g, " ")
+            .trim()
+            .split("(")[0]
+            .trim()
+        )
+        .filter(Boolean)
     );
 
-    // --- Length Options ---
-    const lengthOptions = await page.$$eval("#length .actionProduct", els =>
-      els.map(el => {
-        const spans = el.querySelectorAll("span");
-        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
-      })
-    );
-
-    // --- Thickness Options ---
-    const thicknessOptions = await page.$$eval("#thickness .actionProduct", els =>
-      els.map(el => {
-        const spans = el.querySelectorAll("span");
-        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
-      })
-    );
-
-    // --- Hair Style ---
-    const hairStyles = await page.$$eval("#wavy .actionProduct", els =>
-      els.map(el => el.innerText.trim().replace(/\s+/g, " "))
-    );
-
-    // --- Shades + Colors (simplified for test) ---
-    const shades = await page.$$eval("#shades > div", els =>
-      els.map(el => el.textContent.replace(/\s+/g, " ").trim().split("(")[0].trim())
-    );
-    const colors = await page.$$eval("#color .actionProduct", els =>
-      els.map(el => ({
+    // --- Colors ---
+    const colors = await page.$$eval("#color .actionProduct", (els) =>
+      els.map((el) => ({
         colorName: el.getAttribute("data-name"),
         colorCode: el.getAttribute("color-code"),
         image: el.querySelector("img")?.src,
       }))
+    );
+
+    // --- Qualities ---
+    const qualityOptions = await page.$$eval("#quality .actionProduct", (els) =>
+      els.map((el) => {
+        const spans = el.querySelectorAll("span");
+        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
+      })
+    );
+
+    // --- Lengths ---
+    const lengthOptions = await page.$$eval("#length .actionProduct", (els) =>
+      els.map((el) => {
+        const spans = el.querySelectorAll("span");
+        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
+      })
+    );
+
+    // --- Thickness ---
+    const thicknessOptions = await page.$$eval("#thickness .actionProduct", (els) =>
+      els.map((el) => {
+        const spans = el.querySelectorAll("span");
+        return `${spans[0]?.innerText.trim()} (${spans[1]?.innerText.trim()})`;
+      })
+    );
+
+    // --- Hair Styles ---
+    const hairStyles = await page.$$eval("#wavy .actionProduct", (els) =>
+      els.map((el) => el.innerText.trim().replace(/\s+/g, " "))
     );
 
     results.push({
@@ -373,9 +274,12 @@ const fullName = await page.textContent("h1.page-title span.base, h1.product-tit
   } catch (err) {
     console.error("❌ Scrape failed:", err);
     await browser.close();
-    res.status(500).json({ success: false, error: err.message });
+    res
+      .status(500)
+      .json({ success: false, error: err.message || "Scrape failed" });
   }
 });
+
 
 
 
